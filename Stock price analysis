@@ -1,0 +1,118 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.style.use('fivethirtyeight')
+import plotly.graph_objs as go
+from plotly.offline import init_notebook_mode, iplot
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score, accuracy_score
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+
+# Initialize Plotly in Notebook
+init_notebook_mode(connected=True)
+
+# -----------------------------
+# 1. Load and preprocess data
+# -----------------------------
+def load_stock_data(filepath):
+    sp = pd.read_csv(filepath)
+    sp['Date'] = pd.to_datetime(sp['Date'])
+    sp.dropna(inplace=True)
+    print(f"Dataframe contains stock prices from {sp.Date.min()} to {sp.Date.max()}")
+    print(f"Total days = {(sp.Date.max() - sp.Date.min()).days}")
+    return sp
+
+# -----------------------------
+# 2. Linear Regression
+# -----------------------------
+def train_linear_regression(sp):
+    a = np.array(sp.index).reshape(-1, 1)  # day index
+    b = sp['Close']
+
+    a_train, a_test, b_train, b_test = train_test_split(a, b, test_size=0.3, random_state=101)
+    lm = LinearRegression()
+    lm.fit(a_train, b_train)
+
+    # Plot
+    trace0 = go.Scatter(x=a_train.T[0], y=b_train, mode='markers', name='Actual')
+    trace1 = go.Scatter(x=a_train.T[0], y=lm.predict(a_train), mode='lines', name='Predicted')
+    layout = go.Layout(title='Linear Regression: Closing Price Trend', xaxis=dict(title='Day'), yaxis=dict(title='Price'))
+    iplot(go.Figure(data=[trace0, trace1], layout=layout))
+
+    # Scores
+    print("\nLinear Regression Scores:")
+    print(f"Train R²: {r2_score(b_train, lm.predict(a_train)):.4f}")
+    print(f"Test R²: {r2_score(b_test, lm.predict(a_test)):.4f}")
+    print(f"Train MSE: {mean_squared_error(b_train, lm.predict(a_train)):.4f}")
+    print(f"Test MSE: {mean_squared_error(b_test, lm.predict(a_test)):.4f}")
+
+# -----------------------------
+# 3. KNN Classification
+# -----------------------------
+def train_knn_classifier(sp):
+    sp['Open-Close'] = sp['Open'] - sp['Close']
+    sp['High-Low'] = sp['High'] - sp['Low']
+    X = sp[['Open-Close', 'High-Low']]
+    Y = np.where(sp['Close'].shift(-1) > sp['Close'], 1, -1)
+
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.25, random_state=100)
+
+    params = {'n_neighbors': list(range(2, 17))}
+    knn = KNeighborsClassifier()
+    model = GridSearchCV(knn, params, cv=5)
+    model.fit(X_train, Y_train)
+
+    train_acc = accuracy_score(Y_train, model.predict(X_train))
+    test_acc = accuracy_score(Y_test, model.predict(X_test))
+
+    print("\nKNN Classification Results:")
+    print(f"Best K: {model.best_params_['n_neighbors']}")
+    print(f"Train Accuracy: {train_acc:.2f}")
+    print(f"Test Accuracy: {test_acc:.2f}")
+
+    return pd.DataFrame({'Actual Class': Y_test, 'Predicted Class': model.predict(X_test)})
+
+# -----------------------------
+# 4. KNN Regression
+# -----------------------------
+def train_knn_regressor(sp):
+    sp['Open-Close'] = sp['Open'] - sp['Close']
+    sp['High-Low'] = sp['High'] - sp['Low']
+    X = sp[['Open-Close', 'High-Low']]
+    Y = sp['Close']
+
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.25, random_state=44)
+
+    params = {'n_neighbors': list(range(2, 17))}
+    knn = KNeighborsRegressor()
+    model = GridSearchCV(knn, params, cv=5)
+    model.fit(X_train, Y_train)
+
+    predictions = model.predict(X_test)
+    rmse = np.sqrt(mean_squared_error(Y_test, predictions))
+
+    print("\nKNN Regression Results:")
+    print(f"Best K: {model.best_params_['n_neighbors']}")
+    print(f"RMSE: {rmse:.4f}")
+
+    return pd.DataFrame({'Actual Close': Y_test, 'Predicted Close': predictions})
+
+# -----------------------------
+# Main Execution
+# -----------------------------
+if __name__ == "__main__":
+    file_path = r"C:\Users\OneDrive\Documents\1729258-1613615-Stock_Price_data_set_(1).csv"
+    stock_data = load_stock_data(file_path)
+
+    # 1. Linear Regression
+    train_linear_regression(stock_data)
+
+    # 2. KNN Classification
+    classification_results = train_knn_classifier(stock_data)
+    print(classification_results.head(10))
+
+    # 3. KNN Regression
+    regression_results = train_knn_regressor(stock_data)
+    print(regression_results.head(10))
